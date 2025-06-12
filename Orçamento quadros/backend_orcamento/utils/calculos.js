@@ -34,98 +34,86 @@ function calcularAreaPaspatur(alturaCm, larguraCm, espessuraPaspaturCm) {
 }
 
 
-// Função principal de cálculo do preço do quadro - ATUALIZADA
-async function calcularPrecoQuadro(alturaCm, larguraCm, moldurasSelecionadas, materiaisSelecionados, espessuraPaspaturCm, limpezaSelecionada, dbConnection) {
-    let precoTotalQuadro = 0;
-    let detalhesCalculo = [];
-    let custoLimpeza = 0; // Variável para armazenar o custo da limpeza
+async function calcularPrecoQuadro(altura_cm, largura_cm, moldurasSelecionadas, materiaisSelecionados, espessuraPaspaturCm, limpezaSelecionada, db) {
+    let valorTotal = 0;
+    const detalhes = [];
 
-    if (isNaN(alturaCm) || isNaN(larguraCm) || alturaCm <= 0 || larguraCm <= 0) {
-        throw new Error("Altura e largura do quadro devem ser números positivos.");
+    // --- CORREÇÃO IMPORTANTE ADICIONADA AQUI ---
+    // 1. Calcula o perímetro inicial
+    let perimetro_m = ((altura_cm / 100) + (largura_cm / 100)) * 2;
+    let alturaExterna_m = altura_cm / 100;
+    let larguraExterna_m = largura_cm / 100;
+
+    // 2. Se houver paspatur, ATUALIZA o perímetro e as dimensões externas
+    //    Esta lógica estava faltando e causava o erro no cálculo das molduras.
+    if (materiaisSelecionados.includes('Paspatur') && espessuraPaspaturCm > 0) {
+        alturaExterna_m += (espessuraPaspaturCm / 100) * 2;
+        larguraExterna_m += (espessuraPaspaturCm / 100) * 2;
+        perimetro_m = (alturaExterna_m + larguraExterna_m) * 2;
     }
+    // --- FIM DA CORREÇÃO ---
 
-    const metroLinearBase = calcularMetroLinear(alturaCm, larguraCm);
-    const metroQuadradoBase = calcularMetroQuadrado(alturaCm, larguraCm);
-
-    // 1. Cálculo de Molduras (como antes)
-    if (moldurasSelecionadas && moldurasSelecionadas.length > 0) {
-        for (const molduraCodigo of moldurasSelecionadas) {
-            const [molduraRows] = await dbConnection.execute(
-                'SELECT valor_metro_linear FROM Molduras WHERE codigo = ? OR nome = ?', // Permitir buscar por código ou nome (para alumínio)
-                [molduraCodigo, molduraCodigo]
-            );
-            if (molduraRows.length > 0) {
-                const valorMolduraPorMetro = molduraRows[0].valor_metro_linear;
-                const custoMoldura = valorMolduraPorMetro * metroLinearBase;
-                precoTotalQuadro += custoMoldura;
-                detalhesCalculo.push(`Moldura (${molduraCodigo}): R$ ${custoMoldura.toFixed(2)}`);
-            } else {
-                console.warn(`Moldura com código/nome ${molduraCodigo} não encontrada no banco de dados.`);
-                detalhesCalculo.push(`Moldura (${molduraCodigo}): NÃO ENCONTRADA!`);
-            }
-        }
-    }
-
-    // 2. Cálculo de Materiais (como antes, mas atenção ao Paspatur)
-    if (materiaisSelecionados && materiaisSelecionados.length > 0) {
-        for (const materialNome of materiaisSelecionados) {
-            const [materialRows] = await dbConnection.execute(
-                'SELECT nome, tipo_calculo, valor_base FROM Materiais WHERE nome = ?',
-                [materialNome]
-            );
-
-            if (materialRows.length > 0) {
-                const material = materialRows[0];
-                let custoMaterialItem = 0;
-                let areaOuPerimetroCalculada;
-
-                if (material.tipo_calculo === 'metro_linear') {
-                    areaOuPerimetroCalculada = metroLinearBase;
-                    custoMaterialItem = material.valor_base * areaOuPerimetroCalculada;
-                } else if (material.tipo_calculo === 'metro_quadrado') {
-                    if (material.nome.toLowerCase() === 'paspatur' && espessuraPaspaturCm > 0) { // toLowerCase para robustez
-                        areaOuPerimetroCalculada = calcularAreaPaspatur(alturaCm, larguraCm, espessuraPaspaturCm);
-                    } else {
-                        // Para outros materiais de m², usamos as medidas originais (não arredondadas) para o cálculo da área
-                        // Pois o arredondamento já é considerado em calcularMetroQuadrado.
-                        // No entanto, a função calcularMetroQuadrado já usa as medidas arredondadas.
-                        // Se a intenção é que a área do fundo/vidro seja EXATAMENTE alturaCm * larguraCm (originais) / 10000,
-                        // então o cálculo da área aqui deveria ser: (alturaCm * larguraCm) / 10000;
-                        // Mas para manter consistência com RF01 que diz que metro quadrado é (altura arredondada * largura arredondada)
-                        // mantemos metroQuadradoBase.
-                        areaOuPerimetroCalculada = metroQuadradoBase;
-                    }
-                    custoMaterialItem = material.valor_base * areaOuPerimetroCalculada;
-                }
-                precoTotalQuadro += custoMaterialItem;
-                detalhesCalculo.push(`${material.nome}: R$ ${custoMaterialItem.toFixed(2)}`);
-            } else {
-                console.warn(`Material ${materialNome} não encontrado no banco de dados.`);
-                detalhesCalculo.push(`${materialNome}: NÃO ENCONTRADO!`);
-            }
-        }
-    }
-
-    // 3. Cálculo da Limpeza (NOVO)
-    if (limpezaSelecionada) {
-        // Usar as medidas *originais* (alturaCm, larguraCm) para o cálculo da área da limpeza,
-        // conforme a especificação: "eles vao medir o quadro, vai dar a altura e largura"
-        const areaLimpezaCm2 = alturaCm * larguraCm;
-        const areaLimpezaM2 = areaLimpezaCm2 / 10000;
-        custoLimpeza = areaLimpezaM2 * 150; // R$150,00 por m²
-        precoTotalQuadro += custoLimpeza;
-        detalhesCalculo.push(`Limpeza: R$ ${custoLimpeza.toFixed(2)}`);
-    }
-
-    return {
-        total: precoTotalQuadro,
-        detalhes: detalhesCalculo,
-        alturaArredondadaCm: arredondarParaCinco(alturaCm),
-        larguraArredondadaCm: arredondarParaCinco(larguraCm),
-        metroLinearFinal: metroLinearBase,
-        metroQuadradoFinal: metroQuadradoBase,
-        custoLimpezaDetalhe: limpezaSelecionada ? custoLimpeza.toFixed(2) : "0.00" // Para fácil acesso no PDF se necessário
+    const getMaterialPrice = async (nome) => {
+        const [rows] = await db.execute('SELECT valor_base FROM Materiais WHERE nome = ?', [nome]);
+        return rows.length > 0 ? parseFloat(rows[0].valor_base) : 0;
     };
+    
+    // Calcula o preço dos materiais (Vidro, Fundo, etc.)
+    const area_m2 = (altura_cm / 100) * (largura_cm / 100);
+    for (const materialNome of materiaisSelecionados) {
+        if (materialNome.toLowerCase() !== 'paspatur' && materialNome.toLowerCase() !== 'sarrafo') {
+            const materialPrice = await getMaterialPrice(materialNome);
+            if (materialPrice > 0) {
+                const valorMaterial = area_m2 * materialPrice;
+                valorTotal += valorMaterial;
+                detalhes.push(`${materialNome}: R$ ${valorMaterial.toFixed(2)}`);
+            }
+        }
+    }
+
+    // Calcula Sarrafo (baseado no perímetro INTERNO, o que está correto)
+    if (materiaisSelecionados.includes('Sarrafo')) {
+        const sarrafoPrice = await getMaterialPrice('Sarrafo');
+        if (sarrafoPrice > 0) {
+            const perimetroInterno_m = ((altura_cm / 100) + (largura_cm / 100)) * 2;
+            const valorSarrafo = perimetroInterno_m * sarrafoPrice;
+            valorTotal += valorSarrafo;
+            detalhes.push(`Sarrafo: R$ ${valorSarrafo.toFixed(2)}`);
+        }
+    }
+    
+    // Calcula Paspatur (lógica específica)
+    if (materiaisSelecionados.includes('Paspatur') && espessuraPaspaturCm > 0) {
+        const valorPaspatur = await getMaterialPrice('Paspatur');
+        if (valorPaspatur > 0) {
+            const areaTotalComPaspatur = alturaExterna_m * larguraExterna_m;
+            const valorMaterial = areaTotalComPaspatur * valorPaspatur;
+            valorTotal += valorMaterial;
+            detalhes.push(`Paspatur (${espessuraPaspaturCm}cm): R$ ${valorMaterial.toFixed(2)}`);
+        }
+    }
+
+    // Calcula o preço das molduras (agora usando o perímetro CORRETO)
+    if (moldurasSelecionadas && moldurasSelecionadas.length > 0) {
+        for (const molduraNome of moldurasSelecionadas) {
+            const [rows] = await db.execute('SELECT valor_metro_linear FROM Molduras WHERE nome = ? OR codigo = ?', [molduraNome, molduraNome]);
+            if (rows.length > 0) {
+                const molduraPrice = parseFloat(rows[0].valor_metro_linear);
+                const valorMoldura = perimetro_m * molduraPrice;
+                valorTotal += valorMoldura;
+                detalhes.push(`Moldura (${molduraNome}): R$ ${valorMoldura.toFixed(2)}`);
+            }
+        }
+    }
+
+    // Adiciona valor da Limpeza (se houver)
+    if (limpezaSelecionada) {
+        const valorLimpeza = 10.00; // Valor fixo para limpeza
+        valorTotal += valorLimpeza;
+        detalhes.push(`Limpeza: R$ ${valorLimpeza.toFixed(2)}`);
+    }
+
+    return { total: valorTotal, detalhes };
 }
 
 module.exports = {
