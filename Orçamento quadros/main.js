@@ -1,68 +1,72 @@
-// main.js (VERSÃO FINAL COM VERIFICAÇÃO DE ARQUIVO)
+// main.js (VERSÃO FINAL E MAIS COMPATÍVEL)
 
 const { app, BrowserWindow, dialog } = require('electron');
 const path = require('path');
-const fs = require('fs'); // Importando o módulo 'fs' para interagir com o sistema de arquivos
+const url = require('url');
+
+let mainWindow; // Torna a janela principal uma variável global
 
 function createWindow () {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     webPreferences: {
-      // Mantemos estas configurações que resolvem problemas de segurança e carregamento
-      webSecurity: false,
+      // Estas configurações são essenciais para aplicações locais
       nodeIntegration: true,
-      contextIsolation: false
-    }
+      contextIsolation: false,
+      webSecurity: false, // Necessário para carregar arquivos locais
+    },
+    icon: path.join(__dirname, 'icon.png') // Opcional, se você tiver um ícone
   });
 
-  // ##### VERIFICAÇÃO E CARREGAMENTO MAIS ROBUSTO #####
+  // Constrói o caminho para o index.html
+  const startUrl = url.format({
+    pathname: path.join(__dirname, 'site-orcamento/index.html'),
+    protocol: 'file:',
+    slashes: true
+  });
 
-  // 1. Construir o caminho absoluto para o index.html
-  const indexPath = path.join(__dirname, 'site-orcamento', 'index.html');
+  mainWindow.loadURL(startUrl);
 
-  // 2. Log para vermos o caminho exato que está sendo tentado
-  console.log(`[DEBUG] Caminho absoluto construído para o index.html: ${indexPath}`);
-
-  // 3. VERIFICAR SE O ARQUIVO REALMENTE EXISTE NESTE CAMINHO
-  if (!fs.existsSync(indexPath)) {
-      // Se não existir, mostra uma caixa de erro clara e encerra.
-      dialog.showErrorBox(
-          'Erro Crítico de Arquivo',
-          `O arquivo principal da aplicação (index.html) não foi encontrado.\n\nO sistema procurou em: ${indexPath}\n\nPor favor, verifique se a pasta 'site-orcamento' e o arquivo 'index.html' existem neste local.`
-      );
-      app.quit();
-      return; // Para a execução da função aqui
+  // Abre o DevTools apenas se não estiver em produção (instalado)
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
   }
 
-  // 4. Se o arquivo existe, tenta carregá-lo com loadFile()
-  mainWindow.loadFile(indexPath);
-
-  // ######################################################
-
-  // Deixe o DevTools aberto para podermos ver qualquer erro no Console
-  mainWindow.webContents.openDevTools();
+  mainWindow.on('closed', function () {
+    mainWindow = null;
+  });
 }
 
-// O try...catch para o servidor continua sendo importante
+// Tenta iniciar o servidor backend
 try {
-  console.log('[main.js] Iniciando o servidor backend...');
   require('./backend_orcamento/server.js');
 } catch (error) {
-  dialog.showErrorBox('Erro Fatal no Backend', `Não foi possível iniciar o servidor.\n\nDetalhes: ${error.message}`);
-  app.quit();
+  // Este dialog só funcionará se o app já estiver 'ready'
+  // O ideal é logar e mostrar o erro na janela, se possível
+  console.error('Erro fatal no backend ao iniciar:', error);
+  // Vamos mostrar o erro depois que o app estiver pronto
+  app.on('ready', () => {
+    dialog.showErrorBox(
+      'Erro Fatal no Backend',
+      'Não foi possível iniciar o servidor interno.\n\n' +
+      'Verifique se o XAMPP/MySQL está rodando corretamente e tente novamente.\n\n' +
+      `Detalhes: ${error.message}`
+    );
+    app.quit();
+  });
 }
 
-
-app.whenReady().then(() => {
-  createWindow();
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
+app.on('ready', createWindow);
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+app.on('activate', function () {
+  if (mainWindow === null) {
+    createWindow();
   }
 });
