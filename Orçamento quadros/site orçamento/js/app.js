@@ -210,7 +210,7 @@ function adicionarLinhaMolduraDinamica(valorMoldura = '') {
     const input = document.createElement('input');
     input.type = 'text';
     input.placeholder = 'Código/Nome da moldura';
-    input.className = 'form-control input-moldura-codigo';
+    input.className = 'form-control input-moldura-codigo interactive-number-input';
     input.setAttribute('list', 'lista-molduras');
     input.value = valorMoldura;
     const btnRemover = document.createElement('button');
