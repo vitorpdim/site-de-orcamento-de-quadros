@@ -1,0 +1,15 @@
+directories:
+  output: dist
+  buildResources: build
+appId: com.seu-nome.sistema-orcamento
+productName: Sistema de Orcamento
+files:
+  - filter:
+      - '**/*'
+      - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}'
+      - '!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}'
+      - '!**/node_modules/*.d.ts'
+      - '!**/node_modules/.bin'
+      - '!**/*.{o,h,c,cc,cpp,gyp,gpyi}'
+      - '!**/node_modules/puppeteer/.local-chromium'
+electronVersion: 31.7.7
