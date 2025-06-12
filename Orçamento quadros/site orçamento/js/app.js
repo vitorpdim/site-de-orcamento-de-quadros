@@ -507,29 +507,33 @@ checkboxInicial.addEventListener('change', function () {
 btnCalcularPreco.addEventListener('click', calcularPrecoViaBackend);
 
 btnNovoQuadro.addEventListener('click', () => {
-    // validação de segurança
+    // Validação de segurança que você sugeriu, garantindo que o quadro atual foi calculado
     const quadroAtual = quadrosDoPedido[quadroAtualIndex];
-    if (temDadosQuadroPreenchidos() && quadroAtual && quadroAtual.valorCalculado === 0) {
+    if (temDadosQuadroPreenchidos(quadroAtual) && quadroAtual.valorCalculado === 0) {
         alert('Atenção: Por favor, calcule o preço do quadro atual antes de criar um novo.');
         return;
     }
-
-    // se a bosta do quadro atual tiver dados já calculados, salva antes de criar um novo
-    if (temDadosQuadroPreenchidos() && !salvarQuadroAtual(true)) {
-        if (!confirm('O quadro atual tem dados inválidos. Deseja descartá-lo para criar um novo?')) {
+    if (!salvarQuadroAtual(true)) {
+        if (!confirm('O quadro atual tem dados inválidos. Deseja descartá-lo para criar um novo quadro?')) {
             return;
         }
     }
+    quadrosDoPedido.push({
+        altura: 0, largura: 0, moldurasSelecionadas: [],
+        materiaisSelecionados: [], espessuraPaspatur: 0,
+        medidaFornecidaCliente: false, limpezaSelecionada: false, valorCalculado: 0
+    });
 
-    limparFormularioQuadro();
-    quadrosDoPedido.push(getDadosQuadroAtual()); // adiciona o novo quadro vazio
     quadroAtualIndex = quadrosDoPedido.length - 1;
 
+    limparFormularioQuadro();
+    atualizarContadorQuadros();
+    
+    // Mostra a navegação se agora tivermos mais de um quadro
     if (quadrosDoPedido.length > 1) {
         navegacaoQuadrosContainer.classList.remove('d-none');
     }
-
-    atualizarContadorQuadros();
+    
     inputLarguraQuadro.focus();
 });
 

@@ -120,3 +120,8 @@ section {
     padding-bottom: 0.1rem;
     line-height: 1.5; 
 }
+
+.interactive-number-input {
+    position: relative;
+    z-index: 2; /* Um z-index para garantir que fique na frente de outros elementos */
+}
