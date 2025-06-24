@@ -1,9 +1,9 @@
 {
   "name": "sistema-orcamento",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Sistema de Orçamento de Quadros",
   "main": "main.js",
-  "author": "Seu Nome Aqui",
+  "author": "Victor",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
@@ -14,7 +14,7 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "mysql2": "^3.10.0",
-    "puppeteer": "^22.10.0"
+    "puppeteer-core": "^24.10.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
@@ -32,6 +32,15 @@
       "!**/node_modules/.bin",
       "!**/*.{o,h,c,cc,cpp,gyp,gpyi}",
       "!**/node_modules/puppeteer/.local-chromium"
+    ],
+        "extraResources": [
+      {
+        "from": "./chromium",
+        "to": "chromium",
+        "filter": [
+          "**/*"
+        ]
+      }
     ]
   }
 }
