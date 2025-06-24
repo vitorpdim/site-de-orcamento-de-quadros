@@ -1,5 +1,5 @@
 // pdfGenerator.js 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const path = require('path');
 const fs = require('fs/promises');
 
@@ -10,14 +10,22 @@ const ICONE_WHATSAPP_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgA
 async function generateOrderPdf(pedidoData, quadrosAgrupadosData) {
     let browser;
     try {
+        const isProd = !process.env.ELECTRON_RUN_AS_NODE;
+        const chromiumPath = isProd
+            ? path.join(process.resourcesPath, 'chromium', 'chrome.exe')
+            : path.join(__dirname, '..', '..', 'chromium', 'chrome.exe');
+            
         browser = await puppeteer.launch({
+            executablePath: chromiumPath,
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
+        
         const page = await browser.newPage();
 
         const templatePath = path.join(__dirname, '../pdf_template.html');
         let htmlContent = await fs.readFile(templatePath, 'utf8');
+
 
         // Substituir o SRC da logo no template
         htmlContent = htmlContent.replace('src="CAMINHO_PARA_SUA_LOGO_AQUI"', `src="${LOGO_BASE64}"`);

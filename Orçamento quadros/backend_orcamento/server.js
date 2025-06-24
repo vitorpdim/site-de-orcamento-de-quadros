@@ -1,5 +1,3 @@
-// server.js (VERSÃO 46)
-
 // -----------------------------------------------------------------------------
 // SEÇÃO 1: IMPORTAÇÕES E CONFIGURAÇÃO INICIAL
 // -----------------------------------------------------------------------------
@@ -127,10 +125,10 @@ app.post('/api/pedidos', async (req, res) => {
         for (const quadroData of quadros) {
             const alturaQuadro = parseFloat(quadroData.altura), larguraQuadro = parseFloat(quadroData.largura);
             if (isNaN(alturaQuadro) || alturaQuadro <= 0 || isNaN(larguraQuadro) || larguraQuadro <= 0) throw new Error(`Dados de quadro inválidos no pedido.`);
-            
+
             // Passa a conexão da transação ('conn') para a função de cálculo
             const resultadoCalculoQuadro = await calcularPrecoQuadro(alturaQuadro, larguraQuadro, quadroData.moldurasSelecionadas, quadroData.materiaisSelecionados, quadroData.espessuraPaspatur, quadroData.limpezaSelecionada, conn);
-            
+
             const [quadroResultInsert] = await conn.execute(`INSERT INTO Quadros (pedido_id, altura_cm, largura_cm, medida_fornecida_cliente, limpeza_flag) VALUES (?, ?, ?, ?, ?)`, [pedidoId, alturaQuadro, larguraQuadro, quadroData.medidaFornecidaCliente, quadroData.limpezaSelecionada]);
             const quadroId = quadroResultInsert.insertId;
 
@@ -166,12 +164,17 @@ app.post('/api/pedidos', async (req, res) => {
 
         // CORREÇÃO: Usar 'conn' que é a conexão da transação, não 'pool' ou 'connection'
         await conn.execute(`UPDATE Pedidos SET pdf_blob = ?, pdf_filename = ?, pdf_os_blob = ?, pdf_os_filename = ? WHERE id = ?`, [pdfPedidoBuffer, pdfPedidoFilename, pdfOsBuffer, pdfOsFilename, pedidoId]);
-        
+
         await conn.commit();
         res.status(201).json({ message: 'Pedido e OS salvos com sucesso!', pedidoId: pedidoId, numeroPedido: numeroPedidoFormatado, valorTotal: parseFloat(valor_final_calculado).toFixed(2) });
     } catch (error) {
         if (conn) await conn.rollback();
-        console.error('Erro ao salvar pedido:', error);
+        // Log aprimorado para diagnóstico remoto
+        console.error('--- ERRO DETALHADO AO SALVAR PEDIDO ---');
+        console.error('Data e Hora:', new Date().toISOString());
+        console.error('Mensagem do Erro:', error.message);
+        console.error('Stack Trace do Erro:', error.stack);
+        console.error('------------------------------------');
         res.status(500).json({ message: 'Erro interno do servidor ao salvar pedido e OS.', error: error.message });
     } finally {
         if (conn) conn.release();
@@ -188,28 +191,28 @@ app.get('/api/pedidos/:id', async (req, res) => {
         if (pedidoRows.length === 0) {
             return res.status(404).json({ message: 'Pedido não encontrado.' });
         }
-        
+
         const pedido = pedidoRows[0];
         const [quadrosRows] = await conn.execute('SELECT * FROM Quadros WHERE pedido_id = ? ORDER BY id ASC', [pedidoId]);
-        
+
         // CORREÇÃO IMPORTANTE: Agora vamos calcular o valor de cada quadro e incluí-lo na resposta
         const quadrosCompletos = await Promise.all(quadrosRows.map(async (quadro) => {
             const [molduras] = await conn.execute('SELECT m.nome FROM Quadro_Molduras qm JOIN Molduras m ON qm.moldura_id = m.id WHERE qm.quadro_id = ?', [quadro.id]);
             const [materiais] = await conn.execute('SELECT mat.nome, qm.espessura_paspatur_cm FROM Quadro_Materiais qm JOIN Materiais mat ON qm.material_id = mat.id WHERE qm.quadro_id = ?', [quadro.id]);
-            
+
             const moldurasNomes = molduras.map(m => m.nome);
             const materiaisNomes = materiais.map(m => m.nome);
             const paspatur = materiais.find(m => m.nome.toLowerCase() === 'paspatur');
             const espessuraPaspatur = paspatur ? paspatur.espessura_paspatur_cm : 0;
-            
+
             // Recalcula o preço do quadro com os dados do banco
             const resultadoCalculo = await calcularPrecoQuadro(
-                quadro.altura_cm, 
-                quadro.largura_cm, 
-                moldurasNomes, 
-                materiaisNomes, 
-                espessuraPaspatur, 
-                !!quadro.limpeza_flag, 
+                quadro.altura_cm,
+                quadro.largura_cm,
+                moldurasNomes,
+                materiaisNomes,
+                espessuraPaspatur,
+                !!quadro.limpeza_flag,
                 conn // Usa a conexão da transação
             );
 
@@ -224,7 +227,7 @@ app.get('/api/pedidos/:id', async (req, res) => {
                 valorCalculado: resultadoCalculo.total // AQUI ESTÁ A MÁGICA!
             };
         }));
-        
+
         const respostaCompleta = {
             atendente: pedido.atendente,
             clienteNome: pedido.cliente_nome,
@@ -239,7 +242,7 @@ app.get('/api/pedidos/:id', async (req, res) => {
         console.error(`Erro ao buscar detalhes do pedido ${pedidoId}:`, error);
         res.status(500).json({ message: 'Erro ao buscar detalhes do pedido.' });
     } finally {
-        if(conn) conn.release();
+        if (conn) conn.release();
     }
 });
 
@@ -316,7 +319,7 @@ app.get('/api/pedidos/:id/pdf', async (req, res) => {
         conn = await pool.getConnection();
         const [pedidoRows] = await conn.execute(`SELECT p.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone FROM Pedidos p LEFT JOIN Clientes c ON p.cliente_id = c.id WHERE p.id = ?`, [pedidoId]);
         if (pedidoRows.length === 0) return res.status(404).json({ message: 'Pedido não encontrado.' });
-        
+
         const pedidoDoBanco = pedidoRows[0];
         const pdfBlob = pedidoDoBanco.pdf_blob;
 
@@ -327,7 +330,7 @@ app.get('/api/pedidos/:id/pdf', async (req, res) => {
             res.setHeader('Content-Disposition', `attachment; filename=${pdfFilename}`);
             return res.send(pdfBlob);
         }
-        
+
         // Se não tem blob ou se há um valor editado, gera o PDF sob demanda
         const dadosParaPdf = { ...pedidoDoBanco, valor_final: valorEditado ? parseFloat(valorEditado).toFixed(2) : parseFloat(pedidoDoBanco.valor_final).toFixed(2) };
         const [quadrosRows] = await conn.execute('SELECT id, altura_cm, largura_cm, medida_fornecida_cliente, limpeza_flag FROM Quadros WHERE pedido_id = ?', [pedidoId]);
@@ -360,7 +363,7 @@ app.get('/api/pedidos/:id/os/pdf', async (req, res) => {
     try {
         const [rows] = await pool.execute('SELECT pdf_os_blob, pdf_os_filename FROM Pedidos WHERE id = ?', [pedidoId]);
         if (rows.length === 0 || !rows[0].pdf_os_blob) return res.status(404).json({ message: 'PDF da OS não encontrado.' });
-        
+
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=${rows[0].pdf_os_filename || `os_${pedidoId}.pdf`}`);
         res.send(rows[0].pdf_os_blob);
@@ -375,7 +378,7 @@ app.put('/api/pedidos/:id/status', async (req, res) => {
     const pedidoId = req.params.id;
     const { status } = req.body;
     if (!status || !['A Fazer', 'Já Feito', 'Entregue'].includes(status)) return res.status(400).json({ message: 'Status inválido fornecido.' });
-    
+
     try {
         const [result] = await pool.execute('UPDATE Pedidos SET status = ? WHERE id = ?', [status, pedidoId]);
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Pedido não encontrado.' });
@@ -386,7 +389,7 @@ app.put('/api/pedidos/:id/status', async (req, res) => {
     }
 });
 
-// ---- ROTA PARA DELETAR PEDIDO ----
+// ---- ROTA PRA DELETAR PEDIDO ----
 app.delete('/api/pedidos/:id', async (req, res) => {
     const pedidoId = req.params.id;
     try {
